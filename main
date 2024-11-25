@@ -1,0 +1,315 @@
+# -*- coding: utf-8 -*-
+import os
+import time
+import smtplib
+import threading
+import requests
+import subprocess
+from email.mime.text import MIMEText
+from watchdog.observers import Observer
+from watchdog.events import FileSystemEventHandler
+from collections import defaultdict
+from datetime import datetime
+
+# Dictionary to store access information
+access_log = defaultdict(lambda: {"count": 0, "users": [], "timestamps": []})
+
+# Dictionary to store network device information
+network_devices = {}
+
+# Function to send summary email with a generic subject
+def send_summary_email():
+    sender_email = "matt@denvercitymotorparts.com"
+    recipient_email = "matt@denvercitymotorparts.com"
+    smtp_server = "mail.denvercitymotorparts.com"
+    smtp_port = 465
+    smtp_password = os.getenv("EMAIL_PASSWORD")  # Use environment variable for the password
+
+    try:
+        # Prepare the email body for file access logs
+        if not access_log:
+            email_body = "No access activity detected during the monitoring period.\n\n"
+        else:# -*- coding: utf-8 -*-
+import os
+import time
+import smtplib
+import threading
+import requests
+import subprocess
+from email.mime.text import MIMEText
+from watchdog.observers import Observer
+from watchdog.events import FileSystemEventHandler
+from collections import defaultdict
+from datetime import datetime
+
+# Dictionary to store access information
+access_log = defaultdict(lambda: {"count": 0, "users": [], "timestamps": []})
+
+# Dictionary to store network device information
+network_devices = {}
+
+# Function to send summary email with a generic subject
+def send_summary_email():
+    sender_email = "matt@denvercitymotorparts.com"
+    recipient_email = "matt@denvercitymotorparts.com"
+    smtp_server = "mail.denvercitymotorparts.com"
+    smtp_port = 465
+    smtp_password = os.getenv("EMAIL_PASSWORD")  # Use environment variable for the password
+
+    try:
+        # Prepare the email body for file access logs
+        if not access_log:
+            email_body = "No access activity detected during the monitoring period.\n\n"
+        else:
+            email_body = "Summary of file access activities:\n\n"
+            for filepath, data in access_log.items():
+                users = ', '.join(set(data['users']))
+                timestamps = ', '.join(data['timestamps'])
+                email_body += (
+                    f"File: {filepath}\n"
+                    f"Access Count: {data['count']}\n"
+                    f"Users: {users}\n"
+                    f"Access Times: {timestamps}\n\n"
+                )
+
+        # Attempt to ping back with public IP address
+        try:
+            public_ip = requests.get("https://api.ipify.org").text
+            email_body += f"\nPing-back: System Public IP Address: {public_ip}\n\n"
+        except Exception as e:
+            email_body += "\nPing-back: Failed to determine public IP address.\n\n"
+
+        # Get network information
+        email_body += "Network Information:\n\n"
+        scan_network()
+        if not network_devices:
+            email_body += "No devices detected on the network.\n"
+        else:
+            for ip, mac in network_devices.items():
+                email_body += f"IP Address: {ip}, MAC Address: {mac}\n"
+
+        # Prepare email
+        msg = MIMEText(email_body)
+        msg['Subject'] = "System Update - Summary of File Access and Network Activities"
+        msg['From'] = sender_email
+        msg['To'] = recipient_email
+
+        # Use SMTP over SSL to securely send the email
+        with smtplib.SMTP_SSL(smtp_server, smtp_port) as server:
+            server.login(sender_email, smtp_password)
+            server.sendmail(sender_email, recipient_email, msg.as_string())
+            print("Summary email sent successfully.")
+
+    except Exception as e:
+        print(f"Failed to send summary email: {e}")
+
+# Function to reset the access log after sending summary
+def reset_access_log():
+    global access_log
+    access_log = defaultdict(lambda: {"count": 0, "users": [], "timestamps": []})
+
+# Function to schedule summary emails at specific times
+def schedule_summary_emails():
+    while True:
+        now = datetime.now()
+        if now.hour in [8, 12, 20] and now.minute == 0:
+            send_summary_email()
+            reset_access_log()
+            time.sleep(60)  # Wait for a minute to avoid duplicate sends
+        time.sleep(1)
+
+# Function to scan the local network for devices
+def scan_network():
+    global network_devices
+    network_devices.clear()
+    try:
+        # Run arp -a command to list network devices on Windows
+        arp_output = subprocess.check_output("arp -a", shell=True).decode('utf-8', 'ignore')
+        lines = arp_output.splitlines()
+
+        for line in lines:
+            if "dynamic" in line or "static" in line:
+                parts = line.split()
+                if len(parts) >= 3:
+                    ip_address = parts[0]
+                    mac_address = parts[1]
+                    network_devices[ip_address] = mac_address
+
+    except Exception as e:
+        print(f"Failed to scan the network: {e}")
+
+# File access event handler
+class FileAccessHandler(FileSystemEventHandler):
+    def on_modified(self, event):
+        if not event.is_directory:
+            self.log_access(event.src_path)
+
+    def on_open(self, event):
+        if not event.is_directory:
+            self.log_access(event.src_path)
+
+    def log_access(self, filepath):
+        try:
+            # Gather information about the accessing environment
+            accessing_user = os.getenv("USERNAME") or os.getenv("USER")
+            hostname = os.getenv("COMPUTERNAME")
+            timestamp = time.strftime('%Y-%m-%d %H:%M:%S', time.localtime())
+
+            # Update access log
+            access_log[filepath]["count"] += 1
+            access_log[filepath]["users"].append(accessing_user)
+            access_log[filepath]["timestamps"].append(timestamp)
+
+        except Exception as e:
+            print(f"Error logging file access: {e}")
+
+def main():
+    # Set up the directory you want to monitor (Root directory to monitor the whole computer)
+    monitored_directory = "C:\\"  # Root directory for entire computer monitoring
+
+    # Start the observer for file access events
+    event_handler = FileAccessHandler()
+    observer = Observer()
+    observer.schedule(event_handler, monitored_directory, recursive=True)
+    observer.start()
+
+    # Start the summary email scheduling in a separate thread
+    summary_thread = threading.Thread(target=schedule_summary_emails, daemon=True)
+    summary_thread.start()
+
+    try:
+        while True:
+            time.sleep(1)
+    except KeyboardInterrupt:
+        observer.stop()
+    observer.join()
+
+if __name__ == "__main__":
+    main()
+ 
+            email_body = "Summary of file access activities:\n\n"
+            for filepath, data in access_log.items():
+                users = ', '.join(set(data['users']))
+                timestamps = ', '.join(data['timestamps'])
+                email_body += (
+                    f"File: {filepath}\n"
+                    f"Access Count: {data['count']}\n"
+                    f"Users: {users}\n"
+                    f"Access Times: {timestamps}\n\n"
+                )
+
+        # Attempt to ping back with public IP address
+        try:
+            public_ip = requests.get("https://api.ipify.org").text
+            email_body += f"\nPing-back: System Public IP Address: {public_ip}\n\n"
+        except Exception as e:
+            email_body += "\nPing-back: Failed to determine public IP address.\n\n"
+
+        # Get network information
+        email_body += "Network Information:\n\n"
+        scan_network()
+        if not network_devices:
+            email_body += "No devices detected on the network.\n"
+        else:
+            for ip, mac in network_devices.items():
+                email_body += f"IP Address: {ip}, MAC Address: {mac}\n"
+
+        # Prepare email
+        msg = MIMEText(email_body)
+        msg['Subject'] = "System Update - Summary of File Access and Network Activities"
+        msg['From'] = sender_email
+        msg['To'] = recipient_email
+
+        # Use SMTP over SSL to securely send the email
+        with smtplib.SMTP_SSL(smtp_server, smtp_port) as server:
+            server.login(sender_email, smtp_password)
+            server.sendmail(sender_email, recipient_email, msg.as_string())
+            print("Summary email sent successfully.")
+
+    except Exception as e:
+        print(f"Failed to send summary email: {e}")
+
+# Function to reset the access log after sending summary
+def reset_access_log():
+    global access_log
+    access_log = defaultdict(lambda: {"count": 0, "users": [], "timestamps": []})
+
+# Function to schedule summary emails at specific times
+def schedule_summary_emails():
+    while True:
+        now = datetime.now()
+        if now.hour in [8, 12, 20] and now.minute == 0:
+            send_summary_email()
+            reset_access_log()
+            time.sleep(60)  # Wait for a minute to avoid duplicate sends
+        time.sleep(1)
+
+# Function to scan the local network for devices
+def scan_network():
+    global network_devices
+    network_devices.clear()
+    try:
+        # Run arp -a command to list network devices on Windows
+        arp_output = subprocess.check_output("arp -a", shell=True).decode('utf-8', 'ignore')
+        lines = arp_output.splitlines()
+
+        for line in lines:
+            if "dynamic" in line or "static" in line:
+                parts = line.split()
+                if len(parts) >= 3:
+                    ip_address = parts[0]
+                    mac_address = parts[1]
+                    network_devices[ip_address] = mac_address
+
+    except Exception as e:
+        print(f"Failed to scan the network: {e}")
+
+# File access event handler
+class FileAccessHandler(FileSystemEventHandler):
+    def on_modified(self, event):
+        if not event.is_directory:
+            self.log_access(event.src_path)
+
+    def on_open(self, event):
+        if not event.is_directory:
+            self.log_access(event.src_path)
+
+    def log_access(self, filepath):
+        try:
+            # Gather information about the accessing environment
+            accessing_user = os.getenv("USERNAME") or os.getenv("USER")
+            hostname = os.getenv("COMPUTERNAME")
+            timestamp = time.strftime('%Y-%m-%d %H:%M:%S', time.localtime())
+
+            # Update access log
+            access_log[filepath]["count"] += 1
+            access_log[filepath]["users"].append(accessing_user)
+            access_log[filepath]["timestamps"].append(timestamp)
+
+        except Exception as e:
+            print(f"Error logging file access: {e}")
+
+def main():
+    # Set up the directory you want to monitor (Root directory to monitor the whole computer)
+    monitored_directory = "C:\\"  # Root directory for entire computer monitoring
+
+    # Start the observer for file access events
+    event_handler = FileAccessHandler()
+    observer = Observer()
+    observer.schedule(event_handler, monitored_directory, recursive=True)
+    observer.start()
+
+    # Start the summary email scheduling in a separate thread
+    summary_thread = threading.Thread(target=schedule_summary_emails, daemon=True)
+    summary_thread.start()
+
+    try:
+        while True:
+            time.sleep(1)
+    except KeyboardInterrupt:
+        observer.stop()
+    observer.join()
+
+if __name__ == "__main__":
+    main()
+ 
